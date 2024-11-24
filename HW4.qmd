@@ -1,0 +1,55 @@
+---
+title: "Homework Assignment #3"
+subtitle: "Prioritizing potential aquaculture"
+author: "Liz Peterson"
+date: 11.14.24
+warning: false
+error: false
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r}
+library(terra)
+library(here)
+library(sf)
+library(raster)
+library(stars)
+```
+
+### Prepare data
+```{r}
+# Read in West Coast Exclusive Economic Zones shapefile
+wc_eez <- st_read(here('data/wc_regions_clean.shp'))
+
+# Read in bathymetry raster
+depth <- raster(here('data/depth.tif'))
+
+# Read in annual average sea surface temperature rasters from 2008-2012
+sst_2008 <- raster(here('data/average_annual_sst_2008.tif'))
+sst_2009 <- raster(here('data/average_annual_sst_2009.tif'))
+sst_2010 <- raster(here('data/average_annual_sst_2010.tif'))
+sst_2011 <- raster(here('data/average_annual_sst_2011.tif'))
+sst_2012 <- raster(here('data/average_annual_sst_2012.tif'))
+```
+
+```{r}
+# Combine SST rasters
+sst_all <- st_mosaic(sst_2008, sst_2009, sst_2010, sst_2011, sst_2012)
+```
+
+### Process data
+```{r}
+
+```
+
+### Find suitable locations
+```{r}
+
+```
+
+### Determine the most suitable EEZ
+```{r}
+
+```
+
