@@ -53,18 +53,34 @@ mean_sst <- mean_sst - 273.15
 ```
 
 ```{r}
+# Check mean_sst
+plot(mean_sst)
+```
+
+
+```{r}
 # Crop the depth raster to match the extent of the sst raster
 depth_cropped <- crop(depth, sst_stack)
 
 # Resample the depth data to match the resolution of the sst raster (using the nearest neighbor approach)
+depth_resampled <- resample(depth, sst_stack, method = "ngb")
+```
 
+```{r}
+# Check depth raster after resampling
+plot(depth_resampled)
+```
+
+```{r}
+# Check that depth and sst match in resolution, extent, and CRS
 
 ```
 
 
 ### Find suitable locations
 ```{r}
-
+# Reclassify sst and depth into locations that are suitable for oysters
+rcl <- matrix(c())
 ```
 
 ### Determine the most suitable EEZ
