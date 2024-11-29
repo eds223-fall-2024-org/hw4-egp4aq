@@ -35,13 +35,32 @@ sst_2012 <- raster(here('data/average_annual_sst_2012.tif'))
 
 ```{r}
 # Combine SST rasters
-sst_all <- st_mosaic(sst_2008, sst_2009, sst_2010, sst_2011, sst_2012)
+sst_stack <- stack(sst_2008, sst_2009, sst_2010, sst_2011, sst_2012)
+```
+
+```{r}
+# Make sure all data sets have the same CRS - using sst_all as a reference
+
 ```
 
 ### Process data
 ```{r}
+# Find mean SST from 2008-2012
+mean_sst <- mean(sst_stack)
+
+# Convert mean SST to Celcius from Kelvins
+mean_sst <- mean_sst - 273.15
+```
+
+```{r}
+# Crop the depth raster to match the extent of the sst raster
+depth_cropped <- crop(depth, sst_stack)
+
+# Resample the depth data to match the resolution of the sst raster (using the nearest neighbor approach)
+
 
 ```
+
 
 ### Find suitable locations
 ```{r}
