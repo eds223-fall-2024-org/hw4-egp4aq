@@ -2,7 +2,7 @@
 title: "Homework Assignment #3"
 subtitle: "Prioritizing potential aquaculture"
 author: "Liz Peterson"
-date: 11.14.24
+date: 11.30.24
 warning: false
 error: false
 editor_options: 
@@ -15,6 +15,7 @@ library(here)
 library(sf)
 library(raster)
 library(stars)
+library(tmap)
 ```
 
 ### Prepare data
@@ -35,33 +36,33 @@ sst_2012 <- raster(here('data/average_annual_sst_2012.tif'))
 
 ```{r}
 # Combine SST rasters
-sst_stack <- stack(sst_2008, sst_2009, sst_2010, sst_2011, sst_2012)
+sst_all <- merge(sst_2008, sst_2009, sst_2010, sst_2011, sst_2012)
 ```
 
 ```{r}
 # Make sure all data sets have the same CRS - using sst_all as a reference
 # First, check depth and sst_stack CRS
-if (identical(crs(depth), crs(sst_stack))) {
+if (identical(crs(depth), crs(sst_all))) {
   print("CRS's match!")
 } else {
-  depth <- projectRaster(depth, crs = crs(sst_stack))
+  depth <- projectRaster(depth, crs = crs(sst_all))
 }
 ```
 
 ```{r}
 # Second, check wc_eez and sst_stack
 # I am confused if this is necessary because wc_eez isn't a raster
-# if (identical(crs(wc_eez), crs(sst_stack))) {
+# if (identical(crs(wc_eez), crs(sst_all))) {
 #   print("CRS's match!")
 # } else {
-#   wc_eez <- projectRaster(wc_eez, crs = crs(sst_stack))
+#   wc_eez <- projectRaster(wc_eez, crs = crs(sst_all))
 # }
 ```
 
 ### Process data
 ```{r}
 # Find mean SST from 2008-2012
-mean_sst <- mean(sst_stack)
+mean_sst <- mean(sst_all)
 
 # Convert mean SST to Celcius from Kelvins
 mean_sst <- mean_sst - 273.15
@@ -69,53 +70,52 @@ mean_sst <- mean_sst - 273.15
 
 ```{r}
 # Check mean_sst
-plot(mean_sst)
+plot(mean_sst, main = "Mean SST")
 ```
 
 
 ```{r}
 # Crop the depth raster to match the extent of the sst raster
-depth_cropped <- crop(depth, sst_stack)
+depth_cropped <- crop(depth, sst_all)
 
 # Resample the depth data to match the resolution of the sst raster (using the nearest neighbor approach)
-depth_resampled <- resample(depth, sst_stack, method = "ngb")
+depth_resampled <- resample(depth, sst_all, method = "ngb")
 ```
 
 ```{r}
 # Check depth raster after resampling
-plot(depth_resampled)
+plot(depth_resampled, main = "Bathymetry")
 ```
 
 ```{r}
 # Check that depth and sst match in resolution, extent, and CRS
 
 # CRS matching
-if (identical(crs(depth), crs(sst_stack))) {
+if (identical(crs(depth), crs(sst_all))) {
   print("CRSs match!")
 } else {
-  depth <- projectRaster(depth, crs = crs(sst_stack))
+  depth <- projectRaster(depth, crs = crs(sst_all))
 }
 
 # Extent matching
-if (identical(extent(depth), extent(sst_stack))) {
+if (identical(extent(depth), extent(sst_all))) {
   print("Extents match!")
 } else {
-  depth <- extend(depth, extent(sst_stack))
+  depth <- extend(depth, extent(sst_all))
 }
 
 # Resolution matching
-if (identical(res(depth), res(sst_stack))) {
+if (identical(res(depth), res(sst_all))) {
   print("Resolutions match!")
 } else {
-  depth <- resample(depth, sst_stack, method = "bilinear")
+  depth <- resample(depth, sst_all, method = "bilinear")
 }
 ```
 
 ```{r}
 # Stack rasters for manipulation
-sst_depth <- stack(sst_stack, depth)
+# sst_depth <- merge(sst_all, depth)
 ```
-
 
 ### Find suitable locations
 ```{r}
@@ -134,25 +134,49 @@ depth_rcl <- matrix(c(-Inf, 0, 0,
                     70, Inf, 0),
                     ncol = 3, byrow = TRUE)
 
-for (i in 1:nlayers(sst_stack)) {
-  # Reclassify by sst
-  reclass_layer_sst <- classify(sst_stack[[i]], rcl = sst_rcl)
-}
-
 # Reclassify raster by sst
-#reclass_sst <- classify(sst_depth, rcl = sst_rcl)
+reclass_sst <- reclassify(sst_all, rcl = sst_rcl)
 
-# Reclassify raster by depth 
-#reclass_depth <- classify(sst_depth, rcl = depth_rcl)
+# Reclassify raster by depth
+reclass_depth <- reclassify(sst_all, rcl = depth_rcl)
 
-# Raster map algebra for 0s and 1s
-#reclass_sst_depth <- reclass_depth * reclass_sst
+# Multiply reclassified rasters together to make sure both suitability conditions are true 
+reclass_sst_depth <- reclass_depth * reclass_sst
 
-plot(reclass_sst_depth)
+
+# Plot reclassified raster
+plot(reclass_sst_depth, main = "Suitable locations for oysters")
+
 ```
 
 ### Determine the most suitable EEZ
 ```{r}
+# Rasterize eez data and then find where that data is suitable 
+# Use rgn_id to identify the 5 different EEZ regions
+eez_raster <- rasterize(wc_eez, reclass_sst_depth, field = "rgn_id", fun = "first")
 
+# Preliminary plot to make sure rasterization worked
+plot(eez_raster)
 ```
 
+```{r}
+# Combined plot of suitable EEZ and reclassified raster
+# Plot reclass_sst_depth
+plot(reclass_sst_depth, main = "Suitable locations", col = heat.colors(100))
+
+# Add eez_raster on top with a different color palette
+plot(eez_raster, add = TRUE, col = terrain.colors(10), legend = FALSE)
+```
+
+```{r}
+# Find the total area of these suitable locations in order to rank the zones by priority. 
+```
+
+Sources:
+
+1. Hall, S. J., Delaporte, A., Phillips, M. J., Beveridge, M. & O’Keefe, M. Blue Frontiers: Managing the Environmental Costs of Aquaculture (The WorldFish Center, Penang, Malaysia, 2011).↩︎
+2. Gentry, R. R., Froehlich, H. E., Grimm, D., Kareiva, P., Parke, M., Rust, M., Gaines, S. D., & Halpern, B. S. Mapping the global potential for marine aquaculture. Nature Ecology & Evolution, 1, 1317-1324 (2017).↩︎
+3. GEBCO Compilation Group (2022) GEBCO_2022 Grid (doi:10.5285/e0f0bb80-ab44-2739-e053-6c86abc0289c).↩︎
+4. NOAA Coral Reef Watch. 5km Sea Surface Temperature Anomaly (SSTA). National Oceanic and Atmospheric Administration. Retrieved November 15, 2024, from https://coralreefwatch.noaa.gov/product/5km/index_5km_ssta.php
+5. GEBCO. GEBCO gridded bathymetry data. The GEBCO Digital Atlas. Retrieved November 15, 2024, from https://www.gebco.net/data_and_products/gridded_bathymetry_data/#area
+6. MarineRegions.org. EEZ data. Retrieved November 15, 2024, from https://www.marineregions.org/eez.php
