@@ -40,7 +40,22 @@ sst_stack <- stack(sst_2008, sst_2009, sst_2010, sst_2011, sst_2012)
 
 ```{r}
 # Make sure all data sets have the same CRS - using sst_all as a reference
+# First, check depth and sst_stack CRS
+if (identical(crs(depth), crs(sst_stack))) {
+  print("CRS's match!")
+} else {
+  depth <- projectRaster(depth, crs = crs(sst_stack))
+}
+```
 
+```{r}
+# Second, check wc_eez and sst_stack
+# I am confused if this is necessary because wc_eez isn't a raster
+# if (identical(crs(wc_eez), crs(sst_stack))) {
+#   print("CRS's match!")
+# } else {
+#   wc_eez <- projectRaster(wc_eez, crs = crs(sst_stack))
+# }
 ```
 
 ### Process data
@@ -74,13 +89,66 @@ plot(depth_resampled)
 ```{r}
 # Check that depth and sst match in resolution, extent, and CRS
 
+# CRS matching
+if (identical(crs(depth), crs(sst_stack))) {
+  print("CRSs match!")
+} else {
+  depth <- projectRaster(depth, crs = crs(sst_stack))
+}
+
+# Extent matching
+if (identical(extent(depth), extent(sst_stack))) {
+  print("Extents match!")
+} else {
+  depth <- extend(depth, extent(sst_stack))
+}
+
+# Resolution matching
+if (identical(res(depth), res(sst_stack))) {
+  print("Resolutions match!")
+} else {
+  depth <- resample(depth, sst_stack, method = "bilinear")
+}
+```
+
+```{r}
+# Stack rasters for manipulation
+sst_depth <- stack(sst_stack, depth)
 ```
 
 
 ### Find suitable locations
 ```{r}
 # Reclassify sst and depth into locations that are suitable for oysters
-rcl <- matrix(c())
+# set suitable values to 1 and unsuitable values to 0
+
+# For sst, suitable values are between 11-30 (degrees celsius)
+sst_rcl <- matrix(c(-Inf, 11, 0,
+                    11, 30, 1, 
+                    30, Inf, 0),
+                  ncol = 3, byrow = TRUE)
+
+# For depth, suitable values are between 0-70 (meters below sea level)
+depth_rcl <- matrix(c(-Inf, 0, 0,
+                    0, 70, 1,
+                    70, Inf, 0),
+                    ncol = 3, byrow = TRUE)
+
+for (i in 1:nlayers(sst_stack)) {
+  # Reclassify by sst
+  reclass_layer_sst <- classify(sst_stack[[i]], rcl = sst_rcl)
+}
+
+# Reclassify raster by sst
+#reclass_sst <- classify(sst_depth, rcl = sst_rcl)
+
+# Reclassify raster by depth 
+#reclass_depth <- classify(sst_depth, rcl = depth_rcl)
+
+# Raster map algebra for 0s and 1s
+#reclass_sst_depth <- reclass_depth * reclass_sst
+
+plot(reclass_sst_depth)
 ```
 
 ### Determine the most suitable EEZ
