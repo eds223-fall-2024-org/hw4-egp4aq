@@ -24,19 +24,19 @@ library(tmap)
 wc_eez <- st_read(here('data/wc_regions_clean.shp'))
 
 # Read in bathymetry raster
-depth <- raster(here('data/depth.tif'))
+depth <- rast(here('data/depth.tif'))
 
 # Read in annual average sea surface temperature rasters from 2008-2012
-sst_2008 <- raster(here('data/average_annual_sst_2008.tif'))
-sst_2009 <- raster(here('data/average_annual_sst_2009.tif'))
-sst_2010 <- raster(here('data/average_annual_sst_2010.tif'))
-sst_2011 <- raster(here('data/average_annual_sst_2011.tif'))
-sst_2012 <- raster(here('data/average_annual_sst_2012.tif'))
+sst_2008 <- rast(here('data/average_annual_sst_2008.tif'))
+sst_2009 <- rast(here('data/average_annual_sst_2009.tif'))
+sst_2010 <- rast(here('data/average_annual_sst_2010.tif'))
+sst_2011 <- rast(here('data/average_annual_sst_2011.tif'))
+sst_2012 <- rast(here('data/average_annual_sst_2012.tif'))
 ```
 
 ```{r}
 # Combine SST rasters
-sst_all <- merge(sst_2008, sst_2009, sst_2010, sst_2011, sst_2012)
+sst_all <- c(sst_2008, sst_2009, sst_2010, sst_2011, sst_2012)
 ```
 
 ```{r}
@@ -62,7 +62,7 @@ if (identical(crs(depth), crs(sst_all))) {
 ### Process data
 ```{r}
 # Find mean SST from 2008-2012
-mean_sst <- mean(sst_all)
+mean_sst <- mean(sst_all, na.rm = TRUE)
 
 # Convert mean SST to Celcius from Kelvins
 mean_sst <- mean_sst - 273.15
@@ -76,10 +76,10 @@ plot(mean_sst, main = "Mean SST")
 
 ```{r}
 # Crop the depth raster to match the extent of the sst raster
-depth_cropped <- crop(depth, sst_all)
+depth_cropped <- crop(depth, mean_sst)
 
 # Resample the depth data to match the resolution of the sst raster (using the nearest neighbor approach)
-depth_resampled <- resample(depth, sst_all, method = "ngb")
+depth_resampled <- resample(depth_cropped, mean_sst, method = "ngb")
 ```
 
 ```{r}
