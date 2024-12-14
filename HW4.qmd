@@ -16,6 +16,7 @@ library(sf)
 library(raster)
 library(stars)
 library(tmap)
+library(tidyverse)
 ```
 
 ### Prepare data
@@ -42,22 +43,15 @@ sst_all <- c(sst_2008, sst_2009, sst_2010, sst_2011, sst_2012)
 ```{r}
 # Make sure all data sets have the same CRS - using sst_all as a reference
 # First, check depth and sst_stack CRS
-if (identical(crs(depth), crs(sst_all))) {
-  print("CRS's match!")
-} else {
-  depth <- projectRaster(depth, crs = crs(sst_all))
+if(crs(depth) == crs(sst_all)) {
+  print('Coordinate reference systems match.')
+} else{
+  warning('CRS dont match')
+  depth <- project(depth, crs(sst_all), method = "bilinear")
+  print('CRS now match.')
 }
 ```
 
-```{r}
-# Second, check wc_eez and sst_stack
-# I am confused if this is necessary because wc_eez isn't a raster
-# if (identical(crs(wc_eez), crs(sst_all))) {
-#   print("CRS's match!")
-# } else {
-#   wc_eez <- projectRaster(wc_eez, crs = crs(sst_all))
-# }
-```
 
 ### Process data
 ```{r}
@@ -91,17 +85,17 @@ plot(depth_resampled, main = "Bathymetry")
 # Check that depth and sst match in resolution, extent, and CRS
 
 # CRS matching
-if (identical(crs(depth), crs(sst_all))) {
+if ((crs(depth) == crs(sst_all))) {
   print("CRSs match!")
 } else {
   depth <- projectRaster(depth, crs = crs(sst_all))
 }
 
 # Extent matching
-if (identical(extent(depth), extent(sst_all))) {
+if (ext(depth) == ext(sst_all)) {
   print("Extents match!")
 } else {
-  depth <- extend(depth, extent(sst_all))
+  depth <- extend(depth, ext(sst_all))
 }
 
 # Resolution matching
@@ -110,11 +104,6 @@ if (identical(res(depth), res(sst_all))) {
 } else {
   depth <- resample(depth, sst_all, method = "bilinear")
 }
-```
-
-```{r}
-# Stack rasters for manipulation
-# sst_depth <- merge(sst_all, depth)
 ```
 
 ### Find suitable locations
@@ -129,16 +118,16 @@ sst_rcl <- matrix(c(-Inf, 11, 0,
                   ncol = 3, byrow = TRUE)
 
 # For depth, suitable values are between 0-70 (meters below sea level)
-depth_rcl <- matrix(c(-Inf, 0, 0,
-                    0, 70, 1,
-                    70, Inf, 0),
+depth_rcl <- matrix(c(-Inf, -70, 0,
+                    -70, 0, 1,
+                    0, Inf, 0),
                     ncol = 3, byrow = TRUE)
 
 # Reclassify raster by sst
-reclass_sst <- reclassify(sst_all, rcl = sst_rcl)
+reclass_sst <- classify(sst_all[[1]], rcl = sst_rcl, include.lowest=TRUE)
 
 # Reclassify raster by depth
-reclass_depth <- reclassify(sst_all, rcl = depth_rcl)
+reclass_depth <- classify(sst_all[[2]], rcl = depth_rcl, include.lowest=TRUE)
 
 # Multiply reclassified rasters together to make sure both suitability conditions are true 
 reclass_sst_depth <- reclass_depth * reclass_sst
@@ -146,30 +135,101 @@ reclass_sst_depth <- reclass_depth * reclass_sst
 
 # Plot reclassified raster
 plot(reclass_sst_depth, main = "Suitable locations for oysters")
-
 ```
 
 ### Determine the most suitable EEZ
 ```{r}
 # Rasterize eez data and then find where that data is suitable 
+if(crs(wc_eez) == crs(reclass_sst_depth)) {
+  print('Coordinate reference systems match')
+} else{
+  warning('CRS dont match')
+  wc_eez <- st_transform(wc_eez, crs(reclass_sst_depth))
+  print('CRS now match.')
+}
+
+# Create optimal location mask by finding area of covered raster cells
+optimal_mask <- cellSize(reclass_sst_depth, mask=TRUE,unit='km', transform=TRUE)
+
+plot(optimal_mask)
+
 # Use rgn_id to identify the 5 different EEZ regions
-eez_raster <- rasterize(wc_eez, reclass_sst_depth, field = "rgn_id", fun = "first")
+eez_raster <- rasterize(wc_eez, optimal_mask, field = "rgn_id")
 
 # Preliminary plot to make sure rasterization worked
 plot(eez_raster)
 ```
 
 ```{r}
-# Combined plot of suitable EEZ and reclassified raster
-# Plot reclass_sst_depth
-plot(reclass_sst_depth, main = "Suitable locations", col = heat.colors(100))
-
-# Add eez_raster on top with a different color palette
-plot(eez_raster, add = TRUE, col = terrain.colors(10), legend = FALSE)
+# Find the area in each region with optimal conditions
+suitable_eez <- zonal(optimal_mask, eez_raster, fun = "sum", na.rm = TRUE)
+  
+# join the suitable eez zones with our west coast eez data
+eez_area <- left_join(wc_eez, suitable_eez, by = 'rgn_id')  
 ```
 
 ```{r}
-# Find the total area of these suitable locations in order to rank the zones by priority. 
+# Combined plot of suitable EEZ and depth data
+ggplot(eez_area) +
+  geom_sf(aes(fill = area)) +
+  theme(panel.grid.major=element_blank()) +
+  labs(title = "Total area suitable for oysters",
+       x = "Longitutde",
+       y = "Latitude")
+```
+
+```{r}
+# Generalize workflow in a function
+# Create a function with inputs specified in assignments 
+suitable_function <- function(min_temp, max_temp, min_depth, max_depth, species_name) {
+  # Reclassify the depth based on depth arguments
+  depth_rcl <- matrix(c(-Inf, -max_depth, NA,
+                           -max_depth, -min_depth, 1,
+                           -min_depth, Inf, NA),
+                         ncol = 3, byrow = TRUE) 
+  
+   
+  # Reclassify the temperature matrix based on arguments for temp
+  temp_rcl <- matrix(c(-Inf, min_temp, NA,
+                           min_temp, max_temp, 1,
+                           max_temp, Inf, NA),
+                         ncol = 3, byrow = TRUE) 
+
+# Reclassify using the rcl matrices
+depth <- classify(depth_resampled, rcl = depth_rcl,  include.lowest = TRUE)
+sst <-  classify(mean_sst, rcl = temp_rcl,  include.lowest = TRUE)
+
+total_rcl <- sst * depth
+
+# Create optimal location mask by finding area of covered raster cells
+optimal_mask <- cellSize(x = total_rcl,
+                              unit = 'km',
+                              transform = TRUE)
+  
+# Rasterize the eez with the optimal mask made above
+eez_rasterized <- rasterize(x = wc_eez,
+                        y = optimal_mask,
+                        field = 'rgn',
+                        na.rm = TRUE)
+  
+# Total within our zones
+zones <- zonal(x = optimal_mask,
+                 z = eez_rasterized,
+                 fun = "sum",
+                 na.rm = TRUE)
+# Join both 
+suitable_area <- left_join(wc_eez, zones, by = join_by(rgn))
+  
+# Plot the suitable area --> make sure to put species name in plot title
+
+species_name_print <- paste("Total area suitable for", species_name)
+
+ggplot(suitable_area, aes(fill = area_km2)) +
+  geom_sf() +
+   labs(title = species_name_print,
+        x = 'Longitude',
+        y= 'Latitude')
+}
 ```
 
 Sources:
